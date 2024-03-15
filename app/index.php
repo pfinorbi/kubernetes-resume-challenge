@@ -98,6 +98,9 @@
         <!--==========Slider area==========-->
         <section class="slider_area row m0">
             <div class="slider_inner">
+                <div class="banner">
+                    <h2 class="banner" style="visibility: visible;">Site wide 15% discount only today!</h2>
+                </div>
                 <div class="camera_caption">
                     <h2 class="wow fadeInUp animated">Make Your Shopping Easy</h2>
                     <h5 class="wow fadeIn animated" data-wow-delay="0.3s">Find everything accordingly</h5>

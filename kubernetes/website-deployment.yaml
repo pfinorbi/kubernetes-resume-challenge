@@ -30,7 +30,7 @@ spec:
           - name: ecom-config-vol
             mountPath: /docker-entrypoint-initdb.d
       - name: ecomweb
-        image: pufi01/ecom-web:v1.1
+        image: pufi01/ecom-web:v2
         ports:
         - containerPort: 80
         env:

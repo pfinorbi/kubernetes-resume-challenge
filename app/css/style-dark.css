@@ -1136,3 +1136,21 @@ ul {
 /* ----------------------------- */
 
 /*# sourceMappingURL=style.css.map */
+
+/* Add banner style */
+
+h2.banner {
+  text-align: center;
+  color: gold;
+  padding: 1%;
+  font-size: 30px;
+  animation: blinker 3s linear infinite;
+  animation-delay: 0.8s;
+  opacity: 1;
+}
+
+@keyframes blinker {
+  50% {
+    opacity: 0;
+  } 
+}
