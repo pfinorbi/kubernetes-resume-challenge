@@ -30,7 +30,7 @@ spec:
           - name: ecom-config-vol
             mountPath: /docker-entrypoint-initdb.d
       - name: ecomweb
-        image: pufi01/ecom-web:v1
+        image: pufi01/ecom-web:v1.1
         ports:
         - containerPort: 80
         env:
@@ -42,12 +42,17 @@ spec:
           value: ecompassword
         - name: DB_NAME
           value: ecomdb
+        - name: FEATURE_DARK_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: feature-toggle-config
+              key: FEATURE_DARK_MODE
       volumes:
       - name: ecom-config-vol
         configMap:
           name: ecom-config
           items:
             - key: db-load-script.sql
-              path: db-load-script.sql 
+              path: db-load-script.sql
       
 
