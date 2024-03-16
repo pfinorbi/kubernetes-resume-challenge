@@ -29,6 +29,11 @@ spec:
         volumeMounts:
           - name: ecom-config-vol
             mountPath: /docker-entrypoint-initdb.d
+        resources:
+          limits:
+            cpu: "50m"
+          requests:
+            cpu: "50m"
       - name: ecomweb
         image: pufi01/ecom-web:v2
         ports:
@@ -47,6 +52,11 @@ spec:
             configMapKeyRef:
               name: feature-toggle-config
               key: FEATURE_DARK_MODE
+        resources:
+          limits:
+            cpu: "50m"
+          requests:
+            cpu: "50m"
       volumes:
       - name: ecom-config-vol
         configMap:
@@ -54,5 +64,3 @@ spec:
           items:
             - key: db-load-script.sql
               path: db-load-script.sql
-      
-
