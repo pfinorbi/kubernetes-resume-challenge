@@ -18,20 +18,32 @@ spec:
       - name: ecomdb
         image: mariadb:latest
         env:
-        - name: MARIADB_USER
-          value: ecomuser
         - name: MARIADB_PASSWORD
-          value: ecompassword
-        - name: MARIADB_DATABASE
-          value: ecomdb
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-password
+              key: password
         - name: MARIADB_ROOT_PASSWORD
-          value: ecompassword
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-root-password
+              key: password
+        - name: MARIADB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: ecom-config
+              key: mariadb_user
+        - name: MARIADB_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: ecom-config
+              key: mariadb_database
         volumeMounts:
           - name: ecom-config-vol
             mountPath: /docker-entrypoint-initdb.d
         resources:
           limits:
-            cpu: "50m"
+            cpu: "150m"
           requests:
             cpu: "50m"
       - name: ecomweb
@@ -39,22 +51,34 @@ spec:
         ports:
         - containerPort: 80
         env:
-        - name: DB_HOST
-          value: 127.0.0.1:3306
-        - name: DB_USER
-          value: ecomuser
         - name: DB_PASSWORD
-          value: ecompassword
+          valueFrom:
+            secretKeyRef:
+              name: db-password
+              key: password
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: ecom-config
+              key: db_host
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: ecom-config
+              key: db_user
         - name: DB_NAME
-          value: ecomdb
+          valueFrom:
+            configMapKeyRef:
+              name: ecom-config
+              key: db_name
         - name: FEATURE_DARK_MODE
           valueFrom:
             configMapKeyRef:
               name: feature-toggle-config
-              key: FEATURE_DARK_MODE
+              key: feature_dark_mode
         resources:
           limits:
-            cpu: "50m"
+            cpu: "150m"
           requests:
             cpu: "50m"
         livenessProbe:
