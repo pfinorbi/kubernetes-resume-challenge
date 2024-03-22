@@ -1,52 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ecom-deployment
+  name: ecom-web-deployment
   labels:
-    app: ecom
+    app: ecom-web
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ecom
+      app: ecom-web
   template:
     metadata:
       labels:
-        app: ecom
+        app: ecom-web
     spec:
       containers:
-      - name: ecomdb
-        image: mariadb:latest
-        env:
-        - name: MARIADB_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: mariadb-password
-              key: password
-        - name: MARIADB_ROOT_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: mariadb-root-password
-              key: password
-        - name: MARIADB_USER
-          valueFrom:
-            configMapKeyRef:
-              name: ecom-config
-              key: mariadb_user
-        - name: MARIADB_DATABASE
-          valueFrom:
-            configMapKeyRef:
-              name: ecom-config
-              key: mariadb_database
-        volumeMounts:
-          - name: ecom-config-vol
-            mountPath: /docker-entrypoint-initdb.d
-        resources:
-          limits:
-            cpu: "150m"
-          requests:
-            cpu: "50m"
-      - name: ecomweb
+      - name: ecom-web
         image: pufi01/ecom-web:v2.1
         ports:
         - containerPort: 80
@@ -54,27 +23,27 @@ spec:
         - name: DB_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: db-password
-              key: password
+              name: ecom-web-secret
+              key: db-password
         - name: DB_HOST
           valueFrom:
             configMapKeyRef:
-              name: ecom-config
+              name: ecom-web-config
               key: db_host
         - name: DB_USER
           valueFrom:
             configMapKeyRef:
-              name: ecom-config
+              name: ecom-web-config
               key: db_user
         - name: DB_NAME
           valueFrom:
             configMapKeyRef:
-              name: ecom-config
+              name: ecom-web-config
               key: db_name
         - name: FEATURE_DARK_MODE
           valueFrom:
             configMapKeyRef:
-              name: feature-toggle-config
+              name: ecom-web-feature-toggle-config
               key: feature_dark_mode
         resources:
           limits:
@@ -99,10 +68,3 @@ spec:
             port: 80
           initialDelaySeconds: 3
           periodSeconds: 3
-      volumes:
-      - name: ecom-config-vol
-        configMap:
-          name: ecom-config
-          items:
-            - key: db-load-script.sql
-              path: db-load-script.sql

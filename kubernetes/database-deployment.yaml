@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ecom-db-deployment
+  labels:
+    app: ecom-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ecom-db
+  template:
+    metadata:
+      labels:
+        app: ecom-db
+    spec:
+      containers:
+      - name: ecomdb
+        image: mariadb:latest
+        env:
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ecom-db-secret
+              key: mariadb-password
+        - name: MARIADB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ecom-db-secret
+              key: mariadb-root-password
+        - name: MARIADB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: ecom-db-config
+              key: mariadb_user
+        - name: MARIADB_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: ecom-db-config
+              key: mariadb_database
+        volumeMounts:
+          - name: ecom-db-config-vol
+            mountPath: /docker-entrypoint-initdb.d
+        resources:
+          limits:
+            cpu: "150m"
+          requests:
+            cpu: "50m"
+      volumes:
+      - name: ecom-db-config-vol
+        configMap:
+          name: ecom-db-config
+          items:
+            - key: db-load-script.sql
+              path: db-load-script.sql
