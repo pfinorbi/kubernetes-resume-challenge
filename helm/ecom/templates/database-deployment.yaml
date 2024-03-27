@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.database.fullname | quote }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- toYaml .Values.database.labels | nindent 4 }}
+spec:
+  replicas: {{ .Values.database.replicas }}
+  selector:
+    matchLabels:
+      {{- toYaml .Values.database.labels | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- toYaml .Values.database.labels | nindent 8 }}
+    spec:
+      containers:
+      - name: {{ .Values.database.fullname | quote }}
+        image: {{ .Values.database.image | quote }}
+        env:
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.database.secret.fullname | quote }}
+              key: mariadb-password
+        - name: MARIADB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.database.secret.fullname | quote }}
+              key: mariadb-root-password
+        - name: MARIADB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.database.config.fullname | quote }}
+              key: mariadb_user
+        - name: MARIADB_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.database.config.fullname | quote }}
+              key: mariadb_database
+        volumeMounts:
+          - name: {{ .Values.database.config.volume | quote }}
+            mountPath: /docker-entrypoint-initdb.d
+        resources:
+          {{- toYaml .Values.database.resources | nindent 10 }}
+      volumes:
+      - name: {{ .Values.database.config.volume | quote }}
+        configMap:
+          name: {{ .Values.database.config.fullname | quote }}
+          items:
+            - key: db-load-script.sql
+              path: db-load-script.sql

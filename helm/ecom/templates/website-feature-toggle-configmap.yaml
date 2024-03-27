@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.website.config.featureToggle.fullname | quote }}
+  namespace: {{ .Release.Namespace | quote }}
+data:
+  feature_dark_mode: "true"

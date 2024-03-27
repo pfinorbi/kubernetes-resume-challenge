@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.website.fullname | quote }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- toYaml .Values.website.labels | nindent 4 }}
+spec:
+  replicas: {{ .Values.website.replicas }}
+  selector:
+    matchLabels:
+      {{- toYaml .Values.website.labels | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- toYaml .Values.website.labels | nindent 8 }}
+    spec:
+      containers:
+      - name: {{ .Values.website.fullname | quote }}
+        image: {{ .Values.website.image | quote }}
+        ports:
+        - containerPort: {{ .Values.website.port }}
+        env:
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.website.secret.fullname | quote }}
+              key: db-password
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.website.config.env.fullname | quote }}
+              key: db_host
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.website.config.env.fullname | quote }}
+              key: db_user
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.website.config.env.fullname | quote }}
+              key: db_name
+        - name: FEATURE_DARK_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.website.config.featureToggle.fullname | quote }}
+              key: feature_dark_mode
+        resources:
+          {{- toYaml .Values.website.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /healthcheck.php
+            port: {{ .Values.website.port }}
+          initialDelaySeconds: 3
+          periodSeconds: 3
+        startupProbe:
+          httpGet:
+            path: /ready.php
+            port: {{ .Values.website.port }}
+          failureThreshold: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready.php
+            port: {{ .Values.website.port }}
+          initialDelaySeconds: 3
+          periodSeconds: 3

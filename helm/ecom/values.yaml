@@ -1,0 +1,58 @@
+# Default values for ecom.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Default values for database service
+database:
+  fullname: ecom-db
+  labels:
+    app: ecom-db
+  replicas: 1
+  image: mariadb:latest
+
+  secret:
+    fullname: ecom-db-secret
+
+  config:
+    fullname: ecom-db-config
+    volume: ecom-db-config-vol
+
+  resources:
+    limits:
+      cpu: "150m"
+    requests:
+      cpu: "50m"
+
+  service:
+    name: ecom-db-service
+    type: ClusterIP
+    port: 3306
+
+# Default values for web service
+website:
+  fullname: ecom-web
+  labels:
+    app: ecom-web
+  replicas: 1
+  image: pufi01/ecom-web:v2.1
+  port: 80
+
+  secret:
+    fullname: ecom-web-secret
+
+  config:
+    env:
+      fullname: ecom-web-config
+    featureToggle:
+      fullname: ecom-web-feature-toggle-config
+
+  resources:
+    limits:
+      cpu: "150m"
+    requests:
+      cpu: "50m"
+
+  service:
+    name: ecom-web-service
+    type: LoadBalancer
+    port: 80
