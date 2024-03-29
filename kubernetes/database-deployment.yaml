@@ -41,6 +41,8 @@ spec:
         volumeMounts:
           - name: ecom-db-config-vol
             mountPath: /docker-entrypoint-initdb.d
+          - name: ecom-db-data-vol
+            mountPath: /var/lib/mysql
         resources:
           limits:
             cpu: "150m"
@@ -53,3 +55,6 @@ spec:
           items:
             - key: db-load-script.sql
               path: db-load-script.sql
+      - name: ecom-db-data-vol
+        persistentVolumeClaim:
+          claimName: ecom-db-pvc

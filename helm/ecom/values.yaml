@@ -28,6 +28,11 @@ database:
     type: ClusterIP
     port: 3306
 
+  storage:
+    volumeName: ecom-db-data-vol
+    claimName: ecom-db-pvc
+    size: 1Gi
+
 # Default values for web service
 website:
   fullname: ecom-web

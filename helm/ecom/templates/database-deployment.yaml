@@ -42,6 +42,8 @@ spec:
         volumeMounts:
           - name: {{ .Values.database.config.volume | quote }}
             mountPath: /docker-entrypoint-initdb.d
+          - name: {{ .Values.database.storage.volumeName | quote }}
+            mountPath: /var/lib/mysql
         resources:
           {{- toYaml .Values.database.resources | nindent 10 }}
       volumes:
@@ -51,3 +53,6 @@ spec:
           items:
             - key: db-load-script.sql
               path: db-load-script.sql
+      - name: {{ .Values.database.storage.volumeName | quote }}
+        persistentVolumeClaim:
+          claimName: {{ .Values.database.storage.claimName | quote }}
