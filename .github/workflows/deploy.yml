@@ -39,7 +39,7 @@ jobs:
       - name: Set output variable
         id: set_var
         run: |
-          echo 'image_version=$(echo $DOCKER_METADATA_OUTPUT_JSON | jq -r .labels["org.opencontainers.image.version"])' >> $GITHUB_OUTPUT
+          echo "image_version=$(echo $DOCKER_METADATA_OUTPUT_JSON | jq -r '.labels["org.opencontainers.image.version"]')" >> $GITHUB_OUTPUT
 
   deploy_to_kubernetes:
     name: Deploy image to Kubernetes
