@@ -9,6 +9,8 @@ jobs:
   push_to_registry:
     name: Push Docker image to Docker Hub
     runs-on: ubuntu-latest
+    outputs:
+      image_version: ${{ steps.set_var.outputs.image_version }}
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
@@ -33,3 +35,18 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Set output variable
+        id: set_var
+        run: |
+          echo 'image_version=$(echo $DOCKER_METADATA_OUTPUT_JSON | jq -r .labels["org.opencontainers.image.version"])' >> $GITHUB_OUTPUT
+
+  deploy_to_kubernetes:
+    name: Deploy image to Kubernetes
+    needs: push_to_registry
+    runs-on: ubuntu-latest
+        
+    steps:     
+      - name: Get output variable
+        run: |
+          echo "Image version: ${{ needs.push_to_registry.outputs.image_version }}"
