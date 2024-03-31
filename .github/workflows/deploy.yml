@@ -1,4 +1,4 @@
-name: Build and Publish Docker image
+name: Build, Publish and Deploy Docker image
 
 on:
   push:
@@ -50,3 +50,34 @@ jobs:
       - name: Get output variable
         run: |
           echo "Image version: ${{ needs.push_to_registry.outputs.image_version }}"
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Set AKS context
+        uses: azure/aks-set-context@v4
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          resource-group: ${{ vars.AKS_RGNAME }}
+          cluster-name: ${{ vars.AKS_CLUSTERNAME }}
+    
+      - name: Deploy to AKS
+        uses: Azure/k8s-deploy@v5
+        with:
+          action: deploy
+          namespace: ecom
+          manifests: |
+            kubernetes/database-configmap.yaml
+            kubernetes/database-secret.yaml
+            kubernetes/database-pvc.yaml
+            kubernetes/database-deployment.yaml
+            kubernetes/database-service.yaml
+            kubernetes/website-configmap.yaml
+            kubernetes/website-secret.yaml
+            kubernetes/website-feature-toggle-configmap.yaml
+            kubernetes/website-deployment.yaml
+            kubernetes/website-service.yaml
+          images: |
+            pufi01/ecom-web:${{ needs.push_to_registry.outputs.image_version }}
+
+      
