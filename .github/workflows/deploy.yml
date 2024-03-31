@@ -71,16 +71,16 @@ jobs:
           action: deploy
           namespace: ecom
           manifests: |
-            kubernetes/database-configmap.yaml
-            kubernetes/database-secret.yaml
-            kubernetes/database-pvc.yaml
-            kubernetes/database-deployment.yaml
-            kubernetes/database-service.yaml
-            kubernetes/website-configmap.yaml
-            kubernetes/website-secret.yaml
-            kubernetes/website-feature-toggle-configmap.yaml
-            kubernetes/website-deployment.yaml
-            kubernetes/website-service.yaml
+            ./kubernetes/database-configmap.yaml
+            ./kubernetes/database-secret.yaml
+            ./kubernetes/database-pvc.yaml
+            ./kubernetes/database-deployment.yaml
+            ./kubernetes/database-service.yaml
+            ./kubernetes/website-configmap.yaml
+            ./kubernetes/website-secret.yaml
+            ./kubernetes/website-feature-toggle-configmap.yaml
+            ./kubernetes/website-deployment.yaml
+            ./kubernetes/website-service.yaml
           images: |
             pufi01/ecom-web:${{ needs.push_to_registry.outputs.image_version }}
 
