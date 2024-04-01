@@ -91,5 +91,6 @@ jobs:
           manifests: ${{ steps.bake.outputs.manifestsBundle }}
           images: |
             pufi01/ecom-web:${{ needs.push_to_registry.outputs.image_version }}
+          namespace: ecom
 
       
