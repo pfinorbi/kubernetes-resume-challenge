@@ -6,3 +6,4 @@ data:
   db_host: "ecom-db-service"
   db_user: "ecomuser"
   db_name: "ecomdb"
+  enable_banner: "false"

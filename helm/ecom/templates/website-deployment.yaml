@@ -41,6 +41,11 @@ spec:
             configMapKeyRef:
               name: {{ .Values.website.config.env.fullname | quote }}
               key: db_name
+        - name: ENABLE_BANNER
+          valueFrom:
+            configMapKeyRef:
+              name: {{ .Values.website.config.env.fullname | quote }}
+              key: enable_banner
         - name: FEATURE_DARK_MODE
           valueFrom:
             configMapKeyRef:

@@ -1,5 +1,9 @@
 name: Build, publish and deploy Docker image to AKS
 
+env:
+  IMAGE: pufi01/ecom-web
+  NAMESPACE: ecom 
+
 on:
   push:
     branches:
@@ -25,7 +29,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: pufi01/ecom-web
+          images: ${{ env.IMAGE }}
           tags: type=sha
 
       - name: Build and push Docker image
@@ -77,12 +81,11 @@ jobs:
           overrideFiles: 'helm/ecom/values.yaml'
           overrides: |
             website.replicas:2
-          namespace: ecom
+          namespace: ${{ env.NAMESPACE }}
 
       - name: Create namespace if it does not exist
         run: |
-          NAMESPACE="ecom"
-          kubectl get namespace | grep -q "^$NAMESPACE " || kubectl create namespace $NAMESPACE
+          kubectl get namespace | grep -q "^${{ env.NAMESPACE }} " || kubectl create namespace ${{ env.NAMESPACE }}
         
       - name: Deploy manifests to AKS
         uses: Azure/k8s-deploy@v5
@@ -90,7 +93,7 @@ jobs:
           action: deploy
           manifests: ${{ steps.bake.outputs.manifestsBundle }}
           images: |
-            pufi01/ecom-web:${{ needs.push_to_registry.outputs.image_version }}
-          namespace: ecom
+            ${{ env.IMAGE }}:${{ needs.push_to_registry.outputs.image_version }}
+          namespace: ${{ env.NAMESPACE }}
 
       

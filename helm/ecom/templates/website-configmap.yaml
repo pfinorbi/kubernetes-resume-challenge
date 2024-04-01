@@ -7,3 +7,4 @@ data:
   db_host: {{ .Values.database.service.name | quote }}
   db_user: "ecomuser"
   db_name: "ecomdb"
+  enable_banner: "false"
