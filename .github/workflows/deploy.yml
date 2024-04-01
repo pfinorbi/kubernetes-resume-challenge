@@ -77,6 +77,7 @@ jobs:
           overrideFiles: 'helm/ecom/values.yaml'
           overrides: |
             website.replicas:2
+          namespace: ecom
         
       - name: Deploy manifests to AKS
         uses: Azure/k8s-deploy@v5
