@@ -1,4 +1,4 @@
-name: Build, Publish and Deploy Docker image
+name: Build, publish and deploy Docker image to AKS
 
 on:
   push:
@@ -12,7 +12,7 @@ jobs:
     outputs:
       image_version: ${{ steps.set_var.outputs.image_version }}
     steps:
-      - name: Check out the repo
+      - name: Check out repo
         uses: actions/checkout@v4
 
       - name: Log in to Docker Hub
@@ -42,19 +42,19 @@ jobs:
           echo "image_version=$(echo $DOCKER_METADATA_OUTPUT_JSON | jq -r '.labels["org.opencontainers.image.version"]')" >> $GITHUB_OUTPUT
 
   deploy_to_kubernetes:
-    name: Deploy image to Kubernetes
+    name: Deploy image to AKS
     needs: push_to_registry
     runs-on: ubuntu-latest
         
     steps:
-      - name: Check out the repo
+      - name: Check out repo
         uses: actions/checkout@v4
-        
+
       - name: Get output variable
         run: |
           echo "Image version: ${{ needs.push_to_registry.outputs.image_version }}"
 
-      - name: Install kubectl
+      - name: Setup kubectl
         uses: azure/setup-kubectl@v4
 
       - name: Login to Azure
@@ -67,23 +67,23 @@ jobs:
         with:
           resource-group: ${{ vars.AKS_RGNAME }}
           cluster-name: ${{ vars.AKS_CLUSTERNAME }}
-    
-      - name: Deploy to AKS
+
+      - name: Create manifests from helm chart
+        id: bake
+        uses: azure/k8s-bake@v3
+        with:
+          renderEngine: 'helm'
+          helmChart: 'helm/ecom/'
+          overrideFiles: 'helm/ecom/values.yaml'
+          overrides: |
+            website.replicas:2
+        
+      - name: Deploy manifests to AKS
         uses: Azure/k8s-deploy@v5
         with:
           action: deploy
           namespace: ecom
-          manifests: |
-            kubernetes/database-configmap.yaml
-            kubernetes/database-secret.yaml
-            kubernetes/database-pvc.yaml
-            kubernetes/database-deployment.yaml
-            kubernetes/database-service.yaml
-            kubernetes/website-configmap.yaml
-            kubernetes/website-secret.yaml
-            kubernetes/website-feature-toggle-configmap.yaml
-            kubernetes/website-deployment.yaml
-            kubernetes/website-service.yaml
+          manifests: ${{ steps.bake.outputs.manifestsBundle }}
           images: |
             pufi01/ecom-web:${{ needs.push_to_registry.outputs.image_version }}
 
