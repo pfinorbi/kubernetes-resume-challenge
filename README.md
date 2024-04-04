@@ -1,125 +1,85 @@
-# Introduction
+# The Kubernetes Resume Challenge
 
-This is a sample e-commerce application built for learning purposes.
+## Introduction
 
-Here's how to deploy it on CentOS systems:
+This repository gives an overview of how I completed the [Kubernetes Resume Challenge](https://cloudresumechallenge.dev/docs/extensions/kubernetes-challenge/). I used the sample e-commerce PHP application [kodekloudhub/learning-app-ecommerce](https://github.com/kodekloudhub/learning-app-ecommerce) provided by [KodeKloud](https://kodekloud.com/) and followed the instructions from the challenge guide to reach the end goals. As I usually work with Azure I decided to use AKS as the managed kubernetes hosting platform.
 
-## Deploy Pre-Requisites
+## Prerequisites
 
-1. Install FirewallD
+In order to follow the journey you should have:
 
-```
-sudo yum install -y firewalld
-sudo systemctl start firewalld
-sudo systemctl enable firewalld
-sudo systemctl status firewalld
-```
+- **Docker** for building, running and pushing Docker images
+- **Docker Hub account** to be able to push images to registry
+- **Azure account** to be able to create an AKS cluster
+- **Azure CLI** to manipulate Azure resources
+- **GitHub account** for version control and automation of build and deployment processes via CI/CD pipeline
+- Source code of the sample e-commerce app: [kodekloudhub/learning-app-ecommerce](https://github.com/kodekloudhub/learning-app-ecommerce)
 
-## Deploy and Configure Database
+## Implementation
 
-1. Install MariaDB
+### Web application and database containerization
 
-```
-sudo yum install -y mariadb-server
-sudo vi /etc/my.cnf
-sudo systemctl start mariadb
-sudo systemctl enable mariadb
-```
-
-2. Configure firewall for Database
+Create a Dockerfile with the following content and place it in the same directory as the web app source is located in:
 
 ```
-sudo firewall-cmd --permanent --zone=public --add-port=3306/tcp
-sudo firewall-cmd --reload
+FROM php:7.4-apache
+RUN docker-php-ext-install mysqli
+COPY . /var/www/html/
+EXPOSE 80
 ```
 
-3. Configure Database
+Execute the following commands to build and push the image:
 
 ```
-$ mysql
-MariaDB > CREATE DATABASE ecomdb;
-MariaDB > CREATE USER 'ecomuser'@'localhost' IDENTIFIED BY 'ecompassword';
-MariaDB > GRANT ALL PRIVILEGES ON *.* TO 'ecomuser'@'localhost';
-MariaDB > FLUSH PRIVILEGES;
+docker build -t <dockerhubusername>/ecom-web:v1 .
+docker push <dockerhubusername>/ecom-web:v1
 ```
 
-> ON a multi-node setup remember to provide the IP address of the web server here: `'ecomuser'@'web-server-ip'`
+As we are using the official MariaDB image we don't need to build it. 
 
-4. Load Product Inventory Information to database
-
-Create the db-load-script.sql
+To test the stack locally we can execute the following commands:
 
 ```
-cat > db-load-script.sql <<-EOF
-USE ecomdb;
-CREATE TABLE products (id mediumint(8) unsigned NOT NULL auto_increment,Name varchar(255) default NULL,Price varchar(255) default NULL, ImageUrl varchar(255) default NULL,PRIMARY KEY (id)) AUTO_INCREMENT=1;
+docker network create mynetwork
 
-INSERT INTO products (Name,Price,ImageUrl) VALUES ("Laptop","100","c-1.png"),("Drone","200","c-2.png"),("VR","300","c-3.png"),("Tablet","50","c-5.png"),("Watch","90","c-6.png"),("Phone Covers","20","c-7.png"),("Phone","80","c-8.png"),("Laptop","150","c-4.png");
+docker run --detach --name ecomdb --network mynetwork --env MARIADB_USER=ecomuser --env MARIADB_PASSWORD=ecompassword --env MARIADB_DATABASE=ecomdb --env MARIADB_ROOT_PASSWORD=ecompassword -v ./assets/db-load-script.sql:/docker-entrypoint-initdb.d/db-load-script.sql mariadb:latest
 
-EOF
+docker run --detach --name ecomweb --network mynetwork --publish 80:80 --env DB_HOST=ecomdb --env DB_USER=ecomuser --env DB_PASSWORD=ecompassword --env DB_NAME=ecomdb <dockerhubusername>/ecom-web:v1
 ```
 
-Run sql script
+When the stack is started we can have a look at it in our favorite browser at http://localhost.
 
+To clean everything up execute
+```
+docker container rm -f  $(docker ps -aq)
+docker network rm mynetwork
 ```
 
-sudo mysql < db-load-script.sql
+### Set up managed Kubernetes cluster on Azure
+
+The most simple way of setting up an AKS cluster is probably via Azure CLI.
+
+First run `az login` to authenticate to Azure.
+
+Then run the following commands to set up some variables, create resource group and deploy cluster:
+```
+RGNAME=<resourcegroupname>
+LOCATION=<region>
+CLUSTERNAME=<clustername>
+
+az group create --name $RGNAME --location $LOCATION
+		
+az aks create --resource-group $RGNAME --name $CLUSTERNAME --enable-managed-identity --node-count 1 --node-vm-size Standard_B2ms --generate-ssh-keys
 ```
 
-
-## Deploy and Configure Web
-
-1. Install required packages
-
+Run the following commands to install kubectl and get the kubernetes credentials needed for cluster authenticaton:
 ```
-sudo yum install -y httpd php php-mysqlnd
-sudo firewall-cmd --permanent --zone=public --add-port=80/tcp
-sudo firewall-cmd --reload
+az aks install-cli
+		
+az aks get-credentials --resource-group $RGNAME --name $CLUSTERNAME
 ```
 
-2. Configure httpd
+Finally run `kubectl get nodes` to list the newly created kubernetes worker node.
 
-Change `DirectoryIndex index.html` to `DirectoryIndex index.php` to make the php page the default page
+### Deploy the website to Kubernetes
 
-```
-sudo sed -i 's/index.html/index.php/g' /etc/httpd/conf/httpd.conf
-```
-
-3. Start httpd
-
-```
-sudo systemctl start httpd
-sudo systemctl enable httpd
-```
-
-4. Download code
-
-```
-sudo yum install -y git
-sudo git clone https://github.com/kodekloudhub/learning-app-ecommerce.git /var/www/html/
-```
-
-5. Update index.php
-
-Update [index.php](https://github.com/kodekloudhub/learning-app-ecommerce/blob/13b6e9ddc867eff30368c7e4f013164a85e2dccb/index.php#L107) file to connect to the right database server. In this case `localhost` since the database is on the same server.
-
-```
-sudo sed -i 's/172.20.1.101/localhost/g' /var/www/html/index.php
-
-              <?php
-                        $link = mysqli_connect('172.20.1.101', 'ecomuser', 'ecompassword', 'ecomdb');
-                        if ($link) {
-                        $res = mysqli_query($link, "select * from products;");
-                        while ($row = mysqli_fetch_assoc($res)) { ?>
-```
-
-> ON a multi-node setup remember to provide the IP address of the database server here.
-```
-sudo sed -i 's/172.20.1.101/localhost/g' /var/www/html/index.php
-```
-
-6. Test
-
-```
-curl http://localhost
-```
