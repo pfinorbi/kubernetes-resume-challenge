@@ -219,4 +219,138 @@ curl http://$IP
 
 ### Implement configuration management
 
+To create the feature toggle functionality that enables the dark mode in the web application we can create a separate `style-dark.css` file and change the colors in it according to our liking.
 
+We can then set the current stylesheet file dynamically using some PHP code based on the value of an environment variable:
+
+```
+<?php
+        $featureDarkMode = getenv('FEATURE_DARK_MODE');
+
+        if ($featureDarkMode == "true") {
+            echo '<link href="css/style-dark.css" rel="stylesheet">';
+        } else {
+            echo '<link href="css/style.css" rel="stylesheet">';
+        }
+?>
+```
+
+After building and pushing of the image from the updated sources we can prepare the configmap that will define the environment variable for the container started by the deployment.
+
+Create `website-feature-toggle-configmap.yaml` and apply it to the cluster:
+
+```
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ecom-web-feature-toggle-config
+data:
+  feature_dark_mode: "true"
+```
+
+Update `website-deployment.yaml` to include the environment variable from the configmap and apply it to the cluster:
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ecom-web-deployment
+  labels:
+    app: ecom-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ecom-web
+  template:
+    metadata:
+      labels:
+        app: ecom-web
+    spec:
+      containers:
+      - name: ecom-web
+        image: <dockerhubusername>/ecom-web:v2
+        ports:
+        - containerPort: 80
+        env:
+        - name: DB_HOST
+          value: ecom-db-service
+        - name: DB_USER
+          value: ecomuser
+        - name: DB_PASSWORD
+          value: ecompassword
+        - name: DB_NAME
+          value: ecomdb
+        - name: FEATURE_DARK_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: ecom-web-feature-toggle-config
+              key: feature_dark_mode
+```
+
+After the deployment is updated you should be able to see the new style of your web app.
+
+### Scale the application
+
+To manually scale the replica count of the web deployment you can use the following kubectl command:
+
+```
+# get original pod count
+kubectl get pods
+
+# scale deployment
+kubectl scale deployment/ecom-web-deployment --replicas=6
+
+# get new pod count
+kubectl get pods
+```
+
+### Perform rolling update of the application
+
+To test the rolling update funtionality of the kubernetes deployment add some changes to the application code. 
+
+As an example you can add a new banner to the `index.php` file:
+```
+<div class="banner">
+    <h2 class="banner" style="visibility: visible;">Site wide 15% discount only today!</h2>
+</div>
+```
+
+And add some animation to both `sytle.css` and `style-dark.css` stylesheet files:
+
+```
+h2.banner {
+  text-align: center;
+  color: gold;
+  padding: 1%;
+  font-size: 30px;
+  animation: blinker 3s linear infinite;
+  animation-delay: 0.8s;
+  opacity: 1;
+}
+
+@keyframes blinker {
+  50% {
+    opacity: 0;
+  } 
+}
+```
+
+Using the updated application code build and push the image to the resistry and update the deployment manifest with the new image version
+To apply and monitor the rollout execute the following commands:
+
+```
+kubectl apply -f website-deployment.yaml
+
+kubectl rollout status deployment/ecom-web-deployment
+```
+
+### Roll back deployment
+
+Suppose that we introduced a bug with the new version and we would like to restore the previous state of the application. To do this execute the following command:
+
+```
+kubectl rollout undo deployment/ecom-web-deployment
+```
+
+### Autoscale application
