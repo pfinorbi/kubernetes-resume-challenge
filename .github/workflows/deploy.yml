@@ -4,10 +4,12 @@ env:
   IMAGE: pufi01/ecom-web
   NAMESPACE: ecom 
 
-on:
-  push:
-    branches:
-      - 'master'
+on: workflow_dispatch
+
+#on:
+#  push:
+#    branches:
+#      - 'master'
 
 jobs:
   push_to_registry:
