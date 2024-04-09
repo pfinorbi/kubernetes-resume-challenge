@@ -354,3 +354,199 @@ kubectl rollout undo deployment/ecom-web-deployment
 ```
 
 ### Autoscale application
+
+To automate scaling based on CPU usage we will implement Horizontal Pod Autoscaler (HPA). To make HPA work we need to set CPU requests and limits in the deployment definition the following way:
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ecom-web-deployment
+  labels:
+    app: ecom-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ecom-web
+  template:
+    metadata:
+      labels:
+        app: ecom-web
+    spec:
+      containers:
+      - name: ecom-web
+        image: <dockerhubusername>/ecom-web:v2
+        ports:
+        - containerPort: 80
+        env:
+        - name: DB_HOST
+          value: ecom-db-service
+        - name: DB_USER
+          value: ecomuser
+        - name: DB_PASSWORD
+          value: ecompassword
+        - name: DB_NAME
+          value: ecomdb
+        - name: FEATURE_DARK_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: ecom-web-feature-toggle-config
+              key: feature_dark_mode
+        resources:
+          limits:
+            cpu: "150m"
+          requests:
+            cpu: "50m"
+```
+
+After setting the CPU resources we can add HPA to the deployment using the following command:
+
+```
+kubectl autoscale deployment ecom-web-deployment --cpu-percent=50 --min=2 --max=10
+```
+
+To simulate some load on the application we can utilize Apache Bench. We can install and run the tool on the local machine with the following commands:
+
+```
+# install Apache Bench
+sudo apt-get install apache2-utils
+
+# get public IP of our service
+IP=$(kubectl get service ecom-web-service --output jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+# run Apache Bench
+ab -r -n 100000 -c 500 http://$IP/
+```
+
+We can monitor the behaviour of HPA with the command `kubectl get hpa`.
+
+### Implement Liveness, Readiness and Startup probes
+
+To implement probes we need new endpoints in our web application.
+
+To add the endpoint for Liveness probes create a file named `healthcheck.php` with the code below. It returns HTTP status code 200 to the caller if the application is healthy.
+
+```
+<?php
+
+// Set the appropriate headers for a JSON response
+header('Content-Type: application/json');
+
+// Define the health check status
+$healthCheckStatus = array(
+    'status' => 'OK'
+);
+
+// Set the HTTP status code to 200 OK
+http_response_code(200);
+
+// Encode the status array as JSON and output it
+echo json_encode($healthCheckStatus);
+
+?>
+```
+
+The following code will be used as the Readiness and Startup probe endpoint. It tries to connect to the database of the ecom-db-deployment. In case of failure it returns HTTP 503, otherwise it returns HTTP 200. File `ready.php`:
+
+```
+<?php
+
+// Set the appropriate headers for a JSON response
+header('Content-Type: application/json');
+
+// Check if the application dependencies are ready
+$dbHost = getenv('DB_HOST');
+$dbUser = getenv('DB_USER');
+$dbPassword = getenv('DB_PASSWORD');
+$dbName = getenv('DB_NAME');
+
+// Attempt to connect to the database
+$link = @mysqli_connect($dbHost, $dbUser, $dbPassword, $dbName);
+
+if (!$link) {
+    $isReady = false;
+} else {
+    $isReady = true;
+}
+
+// Define the readiness status based on the check result
+$readinessStatus = array(
+    'status' => $isReady ? 'OK' : 'NOT_READY',
+);
+
+// Set the HTTP status code based on readiness status
+http_response_code($isReady ? 200 : 503); // 200 OK if ready, 503 Service Unavailable if not ready
+
+// Encode the status array as JSON and output it
+echo json_encode($readinessStatus);
+
+?>
+```
+
+After we added the endpoints we can build and push a new version of the images.
+
+To use the endpoints in our application we need to update the deployment manifest and the deployment itself:
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ecom-web-deployment
+  labels:
+    app: ecom-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ecom-web
+  template:
+    metadata:
+      labels:
+        app: ecom-web
+    spec:
+      containers:
+      - name: ecom-web
+        image: <dockerhubusername>/ecom-web:v2
+        ports:
+        - containerPort: 80
+        env:
+        - name: DB_HOST
+          value: ecom-db-service
+        - name: DB_USER
+          value: ecomuser
+        - name: DB_PASSWORD
+          value: ecompassword
+        - name: DB_NAME
+          value: ecomdb
+        - name: FEATURE_DARK_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: ecom-web-feature-toggle-config
+              key: feature_dark_mode
+        resources:
+          limits:
+            cpu: "150m"
+          requests:
+            cpu: "50m"
+        livenessProbe:
+          httpGet:
+            path: /healthcheck.php
+            port: 80
+          initialDelaySeconds: 3
+          periodSeconds: 3
+        startupProbe:
+          httpGet:
+            path: /ready.php
+            port: 80
+          failureThreshold: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready.php
+            port: 80
+          initialDelaySeconds: 3
+          periodSeconds: 3
+```
+
+### Utilize ConfigMaps and Secrets
