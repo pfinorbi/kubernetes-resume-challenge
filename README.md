@@ -14,6 +14,7 @@ In order to follow the journey you should have:
 - **Azure CLI** to manipulate Azure resources
 - **GitHub account** for version control and automation of build and deployment processes via CI/CD pipeline
 - Source code of the sample e-commerce app: [kodekloudhub/learning-app-ecommerce](https://github.com/kodekloudhub/learning-app-ecommerce)
+- **Helm** to package the application
 
 ## Implementation
 
@@ -89,7 +90,7 @@ Create a configmap for the database service with the content below and apply it 
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: ecom-config
+  name: ecom-db-config
 data:
   db-load-script.sql: |
     USE ecomdb;
@@ -550,3 +551,242 @@ spec:
 ```
 
 ### Utilize ConfigMaps and Secrets
+
+Similarly to other kubernetes compontents we can create secrets in several ways. One of our options is to create them using `kubectl` commands:
+
+```
+kubectl create secret generic mariadb-password --from-literal=password='<secret>'
+
+kubectl create secret generic mariadb-root-password --from-literal=password='<secret>'
+
+kubectl create secret generic db-password --from-literal=password='<secret>'
+```
+
+We can create secrets using manifest files as well. In this case we have to take care of the base64 encoding of secrets using the `echo -n '<secret>' | base64` command. We can then put the encoded secrets into the manifest files:
+
+database-secret.yaml:
+
+```
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ecom-db-secret
+data:
+  mariadb-password: ZWNvbXBhc3N3b3JkCg==
+  mariadb-root-password: ZWNvbXBhc3N3b3JkCg==
+```
+
+website-secret.yaml:
+
+```
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ecom-web-secret
+data:
+  db-password: ZWNvbXBhc3N3b3JkCg==
+```
+
+To put all the configuration parameters into ConfigMaps first update the `database-configmap.yaml` manifest:
+
+```
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ecom-db-config
+data:
+  mariadb_user: "ecomuser"
+  mariadb_database: "ecomdb"
+  db-load-script.sql: |
+    USE ecomdb;
+    CREATE TABLE products (id mediumint(8) unsigned NOT NULL auto_increment,Name varchar(255) default NULL,Price varchar(255) default NULL, ImageUrl varchar(255) default NULL,PRIMARY KEY (id)) AUTO_INCREMENT=1;
+    INSERT INTO products (Name,Price,ImageUrl) VALUES ("Laptop","100","c-1.png"),("Drone","200","c-2.png"),("VR","300","c-3.png"),("Tablet","50","c-5.png"),("Watch","90","c-6.png"),("Phone Covers","20","c-7.png"),("Phone","80","c-8.png"),("Laptop","150","c-4.png");
+```
+
+Then create the file `website-configmap.yaml` with the following content:
+
+```
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ecom-web-config
+data:
+  db_host: "ecom-db-service"
+  db_user: "ecomuser"
+  db_name: "ecomdb"
+```
+
+After applying all the secret and configMap manifests update the deployments:
+
+database-deployment.yaml:
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ecom-db-deployment
+  labels:
+    app: ecom-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ecom-db
+  template:
+    metadata:
+      labels:
+        app: ecom-db
+    spec:
+      containers:
+      - name: ecomdb
+        image: mariadb:latest
+        env:
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ecom-db-secret
+              key: mariadb-password
+        - name: MARIADB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ecom-db-secret
+              key: mariadb-root-password
+        - name: MARIADB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: ecom-db-config
+              key: mariadb_user
+        - name: MARIADB_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: ecom-db-config
+              key: mariadb_database
+        volumeMounts:
+          - name: ecom-db-config-vol
+            mountPath: /docker-entrypoint-initdb.d
+        resources:
+          limits:
+            cpu: "150m"
+          requests:
+            cpu: "50m"
+      volumes:
+      - name: ecom-db-config-vol
+        configMap:
+          name: ecom-db-config
+          items:
+            - key: db-load-script.sql
+              path: db-load-script.sql
+```
+
+website-deployment.yaml:
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ecom-web-deployment
+  labels:
+    app: ecom-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ecom-web
+  template:
+    metadata:
+      labels:
+        app: ecom-web
+    spec:
+      containers:
+      - name: ecom-web
+        image: <dockerhubusername>/ecom-web:v2
+        ports:
+        - containerPort: 80
+        env:
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ecom-web-secret
+              key: db-password
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: ecom-web-config
+              key: db_host
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: ecom-web-config
+              key: db_user
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: ecom-web-config
+              key: db_name
+        - name: FEATURE_DARK_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: ecom-web-feature-toggle-config
+              key: feature_dark_mode
+        resources:
+          limits:
+            cpu: "150m"
+          requests:
+            cpu: "50m"
+        livenessProbe:
+          httpGet:
+            path: /healthcheck.php
+            port: 80
+          initialDelaySeconds: 3
+          periodSeconds: 3
+        startupProbe:
+          httpGet:
+            path: /ready.php
+            port: 80
+          failureThreshold: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready.php
+            port: 80
+          initialDelaySeconds: 3
+          periodSeconds: 3
+```
+
+### Package application in Helm
+
+Create a new chart scaffold using Helm CLI:
+
+```
+helm create ecom
+cd ecom/
+```
+
+Customize chart configuration by modifiying the `values.yaml` file. Define variables that you would like to make configurable.
+
+As the next step place the kubernetes manifest files inside the `templates` directory of the Helm chart and parameterize them using Go templates. Replace static values with variables defined in the `values.yaml` file.
+
+Once done with parameterization analyze and package the chart:
+
+```
+helm lint
+helm package .
+```
+
+Finally install the chart using the following command:
+
+```
+helm install ecom-release ecom-0.1.0.tgz --namespace ecom --create-namespace
+```
+
+You can remove the installed Helm release from your cluster with:
+
+```
+helm uninstall ecom-release --namespace ecom
+kubectl delete ns ecom
+```
+
+### Implement persistent storage
+
+
+
