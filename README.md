@@ -788,5 +788,126 @@ kubectl delete ns ecom
 
 ### Implement persistent storage
 
+To use persistent storage for the database service first create a persistent volume claim with the following manifest:
 
+database-pvc.yaml:
+
+```
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ecom-db-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: managed-csi
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+To mount the storage modify the `database-deployment.yaml`:
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ecom-db-deployment
+  labels:
+    app: ecom-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ecom-db
+  template:
+    metadata:
+      labels:
+        app: ecom-db
+    spec:
+      containers:
+      - name: ecomdb
+        image: mariadb:latest
+        env:
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ecom-db-secret
+              key: mariadb-password
+        - name: MARIADB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ecom-db-secret
+              key: mariadb-root-password
+        - name: MARIADB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: ecom-db-config
+              key: mariadb_user
+        - name: MARIADB_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: ecom-db-config
+              key: mariadb_database
+        volumeMounts:
+          - name: ecom-db-config-vol
+            mountPath: /docker-entrypoint-initdb.d
+          - name: ecom-db-data-vol
+            mountPath: /var/lib/mysql
+        resources:
+          limits:
+            cpu: "150m"
+          requests:
+            cpu: "50m"
+      volumes:
+      - name: ecom-db-config-vol
+        configMap:
+          name: ecom-db-config
+          items:
+            - key: db-load-script.sql
+              path: db-load-script.sql
+      - name: ecom-db-data-vol
+        persistentVolumeClaim:
+          claimName: ecom-db-pvc
+```
+
+### Implement CI/CD pipeline
+
+To successfully setup the pipeline for building, pushing and deploying the images we have to do some preparation work.
+
+First of all we need a service principal in Azure that has permissions to interact with the Azure control plane. To create it execute the following commands after assigning values to the variables:
+
+```
+RGNAME=<resourcegroupname>	
+
+RGID=$(az group show --name $RGNAME --query id --output tsv)
+
+az ad sp create-for-rbac --name gh-action --role Contributor --scopes $RGID
+```
+
+The output of the command and the Azure Portal can be used to populate the AZURE_CREDENTIALS repository variable. It should contain the following information in the following format:
+
+```
+{
+    "clientSecret":  "<ServicePrincipalClientSecret>",
+    "subscriptionId":  "<AzureSubscriptionId",
+    "tenantId":  "<AzureTenantId>",
+    "clientId":  "<ServicePrincipalClientId>"
+}
+```
+
+ Once the service principal exists create the following GitHub secrets (repository -> settings -> security -> secrets and variables -> actions -> repository secrets):
+
+- **DOCKER_USERNAME** - to store the Docker Hub username
+- **DOCKER_PASSWORD** - to store the Docker Hub password
+- **AZURE_CREDENTIALS** - to store the Azure Credentials
+
+Then create the following GitHub variables (repository -> settings -> security -> secrets and variables -> actions -> variables -> repository variables):
+
+- **AKS_CLUSTERNAME** - to store the AKS cluster name
+- **AKS_RGNAME** - to store the resource group of the AKS cluster
+
+If the preparation is done we can create the `deploy.yml` file under the `.github/workflows` directory to define our workflow.
+
+The wokflow has been built with in a multi job structure. The first job logs in to Docker Hub, extracts metadata to be used for tagging, builds and pushes the image to Docker Hub. The second job installs kubectl, logs in to Azure, sets kubernetes context, creates kubernetes manifest from the Helm chart and deploys the manifest files.
 
