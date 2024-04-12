@@ -33,6 +33,7 @@ Execute the following commands to build and push the image:
 
 ```
 docker build -t <dockerhubusername>/ecom-web:v1 .
+
 docker push <dockerhubusername>/ecom-web:v1
 ```
 
@@ -50,9 +51,10 @@ docker run --detach --name ecomweb --network mynetwork --publish 80:80 --env DB_
 
 When the stack is started we can have a look at it in our favorite browser at http://localhost.
 
-To clean everything up execute
+To remove the containers and the network execute:
 ```
 docker container rm -f  $(docker ps -aq)
+
 docker network rm mynetwork
 ```
 
@@ -60,7 +62,7 @@ docker network rm mynetwork
 
 The most simple way of setting up an AKS cluster is probably via Azure CLI.
 
-First run `az login` to authenticate to Azure.
+First run `az login --use-device-code` to authenticate to Azure.
 
 Then run the following commands to set up some variables, create resource group and deploy cluster:
 ```
@@ -84,7 +86,15 @@ Finally run `kubectl get nodes` to list the newly created kubernetes worker node
 
 ### Deploy the website to Kubernetes
 
-Create a configmap for the database service with the content below and apply it with `kubectl apply -f database-configmap.yaml`. The sql script will be mounted as a file in the container to set up the database and its contents at startup.
+Create a new namespace that will hold all the ecommerce application related resources:
+
+```
+NS=ecom
+
+kubectl create namespace $NS
+```
+
+Create a configmap for the database service with the content below and apply it with `kubectl apply -f database-configmap.yaml --namespace $NS`. The sql script will be mounted as a file in the container to set up the database and its contents at startup.
 
 ```
 apiVersion: v1
@@ -98,7 +108,7 @@ data:
     INSERT INTO products (Name,Price,ImageUrl) VALUES ("Laptop","100","c-1.png"),("Drone","200","c-2.png"),("VR","300","c-3.png"),("Tablet","50","c-5.png"),("Watch","90","c-6.png"),("Phone Covers","20","c-7.png"),("Phone","80","c-8.png"),("Laptop","150","c-4.png");
 ```
 
-Create deployment manifest for the database service and apply it with `kubectl apply -f database-deployment.yaml`:
+Create deployment manifest for the database service and apply it with `kubectl apply -f database-deployment.yaml --namespace $NS`:
 
 ```
 apiVersion: apps/v1
@@ -130,7 +140,7 @@ spec:
         - name: MARIADB_ROOT_PASSWORD
           value: ecompassword
         volumeMounts:
-          - name: ecom-config-vol
+          - name: ecom-db-config-vol
             mountPath: /docker-entrypoint-initdb.d
       volumes:
       - name: ecom-db-config-vol
@@ -141,7 +151,7 @@ spec:
               path: db-load-script.sql
 ```
 
-Finally create the manifest file `website-deployment.yaml` for the web service and apply it.
+Finally create the manifest file `website-deployment.yaml` for the web service and apply it with `kubectl apply -f website-deployment.yaml --namespace $NS`:
 
 ```
 apiVersion: apps/v1
@@ -178,7 +188,7 @@ spec:
 
 ### Expose website
 
-Create service manifest with the default clusterIP type for the database and apply it with `kubectl apply -f database-service.yaml`. This makes it possible the web app to reach its backend database via its name.
+Create service manifest with the default clusterIP type for the database and apply it with `kubectl apply -f database-service.yaml --namespace $NS`. This makes it possible the web app to reach its backend database via its name.
 
 ```
 apiVersion: v1
@@ -194,7 +204,7 @@ spec:
       targetPort: 3306
 ```
 
-Create a service of type LoadBalancer for the web application using the below manifest to expose it to the public.
+Create a service of type LoadBalancer for the web application using the below manifest to expose it to the public with `kubectl apply -f website-service.yaml --namespace $NS`.
 
 ```
 apiVersion: v1
@@ -213,7 +223,7 @@ spec:
 After the service is created you should be able to get the public IP of your application and reach it via the following commands:
 
 ```
-IP=$(kubectl get service ecom-service --output jsonpath='{.status.loadBalancer.ingress[0].ip}')
+IP=$(kubectl get service ecom-web-service --namespace $NS --output jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
 curl http://$IP
 ```
@@ -238,7 +248,13 @@ We can then set the current stylesheet file dynamically using some PHP code base
 
 After building and pushing of the image from the updated sources we can prepare the configmap that will define the environment variable for the container started by the deployment.
 
-Create `website-feature-toggle-configmap.yaml` and apply it to the cluster:
+```
+docker build -t pufi01/ecom-web:v2 .
+
+docker push pufi01/ecom-web:v2
+```
+
+Create `website-feature-toggle-configmap.yaml` and apply it to the cluster with `kubectl apply -f website-feature-toggle-configmap.yaml --namespace $NS`:
 
 ```
 apiVersion: v1
@@ -297,13 +313,13 @@ To manually scale the replica count of the web deployment you can use the follow
 
 ```
 # get original pod count
-kubectl get pods
+kubectl get pods --namespace $NS
 
 # scale deployment
-kubectl scale deployment/ecom-web-deployment --replicas=6
+kubectl scale deployment/ecom-web-deployment --replicas=6 --namespace $NS
 
 # get new pod count
-kubectl get pods
+kubectl get pods --namespace $NS
 ```
 
 ### Perform rolling update of the application
@@ -337,13 +353,14 @@ h2.banner {
 }
 ```
 
-Using the updated application code build and push the image to the resistry and update the deployment manifest with the new image version
+Using the updated application code build and push the image to the registry and update the deployment manifest with the new image version.
+
 To apply and monitor the rollout execute the following commands:
 
 ```
-kubectl apply -f website-deployment.yaml
+kubectl apply -f website-deployment.yaml --namespace $NS
 
-kubectl rollout status deployment/ecom-web-deployment
+kubectl rollout status deployment/ecom-web-deployment --namespace $NS
 ```
 
 ### Roll back deployment
@@ -351,7 +368,7 @@ kubectl rollout status deployment/ecom-web-deployment
 Suppose that we introduced a bug with the new version and we would like to restore the previous state of the application. To do this execute the following command:
 
 ```
-kubectl rollout undo deployment/ecom-web-deployment
+kubectl rollout undo deployment/ecom-web-deployment --namespace $NS
 ```
 
 ### Autoscale application
@@ -404,7 +421,7 @@ spec:
 After setting the CPU resources we can add HPA to the deployment using the following command:
 
 ```
-kubectl autoscale deployment ecom-web-deployment --cpu-percent=50 --min=2 --max=10
+kubectl autoscale deployment ecom-web-deployment --cpu-percent=50 --min=2 --max=10 --namespace $NS
 ```
 
 To simulate some load on the application we can utilize Apache Bench. We can install and run the tool on the local machine with the following commands:
@@ -414,13 +431,13 @@ To simulate some load on the application we can utilize Apache Bench. We can ins
 sudo apt-get install apache2-utils
 
 # get public IP of our service
-IP=$(kubectl get service ecom-web-service --output jsonpath='{.status.loadBalancer.ingress[0].ip}')
+IP=$(kubectl get service ecom-web-service --namespace $NS --output jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
 # run Apache Bench
 ab -r -n 100000 -c 500 http://$IP/
 ```
 
-We can monitor the behaviour of HPA with the command `kubectl get hpa`.
+We can monitor the behaviour of HPA with the command `kubectl get hpa --namespace $NS`.
 
 ### Implement Liveness, Readiness and Startup probes
 
@@ -508,7 +525,7 @@ spec:
     spec:
       containers:
       - name: ecom-web
-        image: <dockerhubusername>/ecom-web:v2
+        image: <dockerhubusername>/ecom-web:v4
         ports:
         - containerPort: 80
         env:
@@ -616,6 +633,16 @@ data:
   db_name: "ecomdb"
 ```
 
+```
+kubectl apply -f database-secret.yaml --namespace $NS
+
+kubectl apply -f website-secret.yaml --namespace $NS
+
+kubectl apply -f database-configmap.yaml --namespace $NS
+
+kubectl apply -f website-configmap.yaml --namespace $NS
+```
+
 After applying all the secret and configMap manifests update the deployments:
 
 database-deployment.yaml:
@@ -699,7 +726,7 @@ spec:
     spec:
       containers:
       - name: ecom-web
-        image: <dockerhubusername>/ecom-web:v2
+        image: <dockerhubusername>/ecom-web:v4
         ports:
         - containerPort: 80
         env:
@@ -753,37 +780,12 @@ spec:
           periodSeconds: 3
 ```
 
-### Package application in Helm
-
-Create a new chart scaffold using Helm CLI:
+Apply them to the cluster:
 
 ```
-helm create ecom
-cd ecom/
-```
+kubectl apply -f database-deployment.yaml --namespace $NS
 
-Customize chart configuration by modifiying the `values.yaml` file. Define variables that you would like to make configurable.
-
-As the next step place the kubernetes manifest files inside the `templates` directory of the Helm chart and parameterize them using Go templates. Replace static values with variables defined in the `values.yaml` file.
-
-Once done with parameterization analyze and package the chart:
-
-```
-helm lint
-helm package .
-```
-
-Finally install the chart using the following command:
-
-```
-helm install ecom-release ecom-0.1.0.tgz --namespace ecom --create-namespace
-```
-
-You can remove the installed Helm release from your cluster with:
-
-```
-helm uninstall ecom-release --namespace ecom
-kubectl delete ns ecom
+kubectl apply -f website-deployment.yaml --namespace $NS
 ```
 
 ### Implement persistent storage
@@ -871,6 +873,48 @@ spec:
           claimName: ecom-db-pvc
 ```
 
+After checking the results we can remove all the resources by deleting the namespace:
+
+```
+kubectl delete namespace $NS
+```
+
+### Package application in Helm
+
+Create a new chart scaffold using Helm CLI:
+
+```
+helm create ecom
+
+cd ecom/
+```
+
+Customize chart configuration by modifiying the `values.yaml` file. Define variables that you would like to make configurable.
+
+As the next step place the kubernetes manifest files inside the `templates` directory of the Helm chart and parameterize them using Go templates. Replace static values with variables defined in the `values.yaml` file.
+
+Once done with parameterization lint and package the chart:
+
+```
+helm lint
+
+helm package .
+```
+
+Finally install it using the following command:
+
+```
+helm install ecom-release ecom-0.1.0.tgz --namespace ecom --create-namespace
+```
+
+You can remove the installed Helm release from your cluster with:
+
+```
+helm uninstall ecom-release --namespace ecom
+
+kubectl delete ns ecom
+```
+
 ### Implement CI/CD pipeline
 
 To successfully setup the pipeline for building, pushing and deploying the images we have to do some preparation work.
@@ -909,5 +953,5 @@ Then create the following GitHub variables (repository -> settings -> security -
 
 If the preparation is done we can create the `deploy.yml` file under the `.github/workflows` directory to define our workflow.
 
-The wokflow has been built with in a multi job structure. The first job logs in to Docker Hub, extracts metadata to be used for tagging, builds and pushes the image to Docker Hub. The second job installs kubectl, logs in to Azure, sets kubernetes context, creates kubernetes manifest from the Helm chart and deploys the manifest files.
+The wokflow has been built in a multi job structure. The first job logs in to Docker Hub, extracts metadata to be used for tagging, builds and pushes the image to Docker Hub. The second job installs kubectl, logs in to Azure, sets kubernetes context, creates kubernetes manifest from the Helm chart and deploys the manifest files.
 
