@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This document gives an overview of how I completed the [Kubernetes Resume Challenge](https://cloudresumechallenge.dev/docs/extensions/kubernetes-challenge/). I used a sample e-commerce PHP application provided by [KodeKloud](https://kodekloud.com/) as a starting point and followed the instructions from the challenge guide to reach the end goals. As I usually work with the Azure Cloud I decided to use AKS to host the application.
+This document gives an overview of how I completed the [Kubernetes Resume Challenge](https://cloudresumechallenge.dev/docs/extensions/kubernetes-challenge/) organized by [Forrest Brazeal](https://www.linkedin.com/in/forrestbrazeal/). I used a sample e-commerce PHP application provided by [KodeKloud](https://kodekloud.com/) as a starting point and followed the instructions from the challenge guide to reach the end goals. As I usually work with the Azure Cloud I decided to use AKS to host the application.
 
 ## Prerequisites
 
