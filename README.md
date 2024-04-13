@@ -2,25 +2,25 @@
 
 ## Introduction
 
-This repository gives an overview of how I completed the [Kubernetes Resume Challenge](https://cloudresumechallenge.dev/docs/extensions/kubernetes-challenge/). I used the sample e-commerce PHP application [kodekloudhub/learning-app-ecommerce](https://github.com/kodekloudhub/learning-app-ecommerce) provided by [KodeKloud](https://kodekloud.com/) and followed the instructions from the challenge guide to reach the end goals. As I usually work with Azure I decided to use AKS as the managed kubernetes hosting platform.
+This document gives an overview of how I completed the [Kubernetes Resume Challenge](https://cloudresumechallenge.dev/docs/extensions/kubernetes-challenge/). I used a sample e-commerce PHP application provided by [KodeKloud](https://kodekloud.com/) as a starting point and followed the instructions from the challenge guide to reach the end goals. As I usually work with the Azure Cloud I decided to use AKS to host the application.
 
 ## Prerequisites
 
-In order to follow the journey you should have:
+If you want to follow along you should have the following prerequisites:
 
-- **Docker** for building, running and pushing Docker images
-- **Docker Hub account** to be able to push images to registry
-- **Azure account** to be able to create an AKS cluster
-- **Azure CLI** to manipulate Azure resources
-- **GitHub account** for version control and automation of build and deployment processes via CI/CD pipeline
-- Source code of the sample e-commerce app: [kodekloudhub/learning-app-ecommerce](https://github.com/kodekloudhub/learning-app-ecommerce)
-- **Helm** to package the application
+- **Docker** for building, running and pushing Docker images ([Docker Desktop](https://docs.docker.com/desktop/))
+- **Docker Hub account** to push images to [Docker Hub](https://hub.docker.com/)
+- **Azure account** to create an AKS cluster ([Azure account](https://azure.microsoft.com/en-us/free/))
+- **Azure CLI** to manipulate Azure resources from the command line ([Azure CLI](https://learn.microsoft.com/en-us/cli/azure/))
+- **GitHub account** for version control and automation of build and deployment processes ([GitHub](https://github.com/))
+- Source code of the sample e-commerce app ([kodekloudhub/learning-app-ecommerce](https://github.com/kodekloudhub/learning-app-ecommerce))
+- **Helm** to package the application ([Helm](https://helm.sh/))
 
 ## Implementation
 
 ### Web application and database containerization
 
-Create a Dockerfile with the following content and place it in the same directory as the web app source is located in:
+Create a Dockerfile with the content below and place it in the same directory where the application source code is located in:
 
 ```
 FROM php:7.4-apache
@@ -29,7 +29,7 @@ COPY . /var/www/html/
 EXPOSE 80
 ```
 
-Execute the following commands to build and push the image:
+Execute the following docker commands to build and push the image:
 
 ```
 docker build -t <dockerhubusername>/ecom-web:v1 .
@@ -37,9 +37,9 @@ docker build -t <dockerhubusername>/ecom-web:v1 .
 docker push <dockerhubusername>/ecom-web:v1
 ```
 
-As we are using the official MariaDB image we don't need to build it. 
+We are using the official MariaDB docker image to host our backend database so we only need to pull it from Docker Hub. 
 
-To test the stack locally we can execute the following commands:
+If you want to test the application locally you can execute the following commands:
 
 ```
 docker network create mynetwork
@@ -49,9 +49,10 @@ docker run --detach --name ecomdb --network mynetwork --env MARIADB_USER=ecomuse
 docker run --detach --name ecomweb --network mynetwork --publish 80:80 --env DB_HOST=ecomdb --env DB_USER=ecomuser --env DB_PASSWORD=ecompassword --env DB_NAME=ecomdb <dockerhubusername>/ecom-web:v1
 ```
 
-When the stack is started we can have a look at it in our favorite browser at http://localhost.
+If both containers are up and running you can have a look at the application in the browser at http://localhost.
 
-To remove the containers and the network execute:
+To remove the containers and network execute:
+
 ```
 docker container rm -f  $(docker ps -aq)
 
@@ -60,33 +61,33 @@ docker network rm mynetwork
 
 ### Set up managed Kubernetes cluster on Azure
 
-The most simple way of setting up an AKS cluster is probably via Azure CLI.
+Probably the most simple way of setting up an AKS cluster is via Azure CLI. So we will use it in the next steps.
 
 First run `az login --use-device-code` to authenticate to Azure.
 
-Then run the following commands to set up some variables, create resource group and deploy cluster:
+Then run the following commands to set up some variables, create an Azure resource group and the cluster itself:
 ```
 RGNAME=<resourcegroupname>
 LOCATION=<region>
 CLUSTERNAME=<clustername>
 
 az group create --name $RGNAME --location $LOCATION
-		
+
 az aks create --resource-group $RGNAME --name $CLUSTERNAME --enable-managed-identity --node-count 1 --node-vm-size Standard_B2ms --generate-ssh-keys
 ```
 
-Run the following commands to install kubectl and get the kubernetes credentials needed for cluster authenticaton:
+To install kubectl and merge the AKS credentials into your context run the following commands:
 ```
 az aks install-cli
 		
 az aks get-credentials --resource-group $RGNAME --name $CLUSTERNAME
 ```
 
-Finally run `kubectl get nodes` to list the newly created kubernetes worker node.
+Finally run `kubectl get nodes` to validate your connection to the newly created AKS cluster.
 
 ### Deploy the website to Kubernetes
 
-Create a new namespace that will hold all the ecommerce application related resources:
+Create a kubernetes namespace that will hold all the e-commerce application related components:
 
 ```
 NS=ecom
@@ -94,7 +95,7 @@ NS=ecom
 kubectl create namespace $NS
 ```
 
-Create a configmap for the database service with the content below and apply it with `kubectl apply -f database-configmap.yaml --namespace $NS`. The sql script will be mounted as a file in the container to set up the database and its contents at startup.
+Then create a configmap manifest file for the database and apply it with `kubectl apply -f database-configmap.yaml --namespace $NS`. The SQL script contained in the manifest will be mounted as a file in the container and it will set up the ecomdb database and its content at container startup.
 
 ```
 apiVersion: v1
@@ -108,7 +109,7 @@ data:
     INSERT INTO products (Name,Price,ImageUrl) VALUES ("Laptop","100","c-1.png"),("Drone","200","c-2.png"),("VR","300","c-3.png"),("Tablet","50","c-5.png"),("Watch","90","c-6.png"),("Phone Covers","20","c-7.png"),("Phone","80","c-8.png"),("Laptop","150","c-4.png");
 ```
 
-Create deployment manifest for the database service and apply it with `kubectl apply -f database-deployment.yaml --namespace $NS`:
+To deploy the database container create a new deployment manifest and apply it with `kubectl apply -f database-deployment.yaml --namespace $NS` to the cluster:
 
 ```
 apiVersion: apps/v1
@@ -151,7 +152,7 @@ spec:
               path: db-load-script.sql
 ```
 
-Finally create the manifest file `website-deployment.yaml` for the web service and apply it with `kubectl apply -f website-deployment.yaml --namespace $NS`:
+Finally create the deployment file for the web application and apply it with `kubectl apply -f website-deployment.yaml --namespace $NS`:
 
 ```
 apiVersion: apps/v1
@@ -186,9 +187,11 @@ spec:
           value: ecomdb
 ```
 
+At this stage our application is deployed to the cluster but we are not able to reach it from the outside world.
+
 ### Expose website
 
-Create service manifest with the default clusterIP type for the database and apply it with `kubectl apply -f database-service.yaml --namespace $NS`. This makes it possible the web app to reach its backend database via its name.
+Create a service manifest with the default ClusterIP type for the database and apply it with `kubectl apply -f database-service.yaml --namespace $NS`. This service makes it possible the web application to reach its backend database using its name 'ecom-db-service'.
 
 ```
 apiVersion: v1
@@ -204,8 +207,9 @@ spec:
       targetPort: 3306
 ```
 
-Create a service of type LoadBalancer for the web application using the below manifest to expose it to the public with `kubectl apply -f website-service.yaml --namespace $NS`.
+To expose the web application to the public create a service of type LoadBalancer with the command `kubectl apply -f website-service.yaml --namespace $NS`.
 
+`website-service.yaml`:
 ```
 apiVersion: v1
 kind: Service
@@ -220,19 +224,19 @@ spec:
       port: 80
 ```
 
-After the service is created you should be able to get the public IP of your application and reach it via the following commands:
+After the service is created you should be able to get the public IP of your application using the following command:
 
 ```
 IP=$(kubectl get service ecom-web-service --namespace $NS --output jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
-curl http://$IP
+echo "http://$IP"
 ```
+
+If everything went fine the e-commerce application is now reachable to the public.
 
 ### Implement configuration management
 
-To create the feature toggle functionality that enables the dark mode in the web application we can create a separate `style-dark.css` file and change the colors in it according to our liking.
-
-We can then set the current stylesheet file dynamically using some PHP code based on the value of an environment variable:
+To build the dark mode feature toggle functionality into the application we can create a separate `style-dark.css` file and change the styling according to our liking in it. We can then control the active stylesheet file dynamically using some additional PHP code in `index.php`:
 
 ```
 <?php
@@ -246,15 +250,15 @@ We can then set the current stylesheet file dynamically using some PHP code base
 ?>
 ```
 
-After building and pushing of the image from the updated sources we can prepare the configmap that will define the environment variable for the container started by the deployment.
+After adding these changes to our application code we can build and push a new version of the image:
 
 ```
-docker build -t pufi01/ecom-web:v2 .
+docker build -t <dockerhubusername>/ecom-web:v2 .
 
-docker push pufi01/ecom-web:v2
+docker push <dockerhubusername>/ecom-web:v2
 ```
 
-Create `website-feature-toggle-configmap.yaml` and apply it to the cluster with `kubectl apply -f website-feature-toggle-configmap.yaml --namespace $NS`:
+As the next step create a new configmap which will control the status of the dark mode. Apply it to the cluster with `kubectl apply -f website-feature-toggle-configmap.yaml --namespace $NS`:
 
 ```
 apiVersion: v1
@@ -265,7 +269,7 @@ data:
   feature_dark_mode: "true"
 ```
 
-Update `website-deployment.yaml` to include the environment variable from the configmap and apply it to the cluster:
+Then update the `website-deployment.yaml` manifest to include the environment variable from the configmap, change image tag in it and apply it to the cluster:
 
 ```
 apiVersion: apps/v1
@@ -305,7 +309,7 @@ spec:
               key: feature_dark_mode
 ```
 
-After the deployment is updated you should be able to see the new style of your web app.
+After the deployment is updated you should be able to see the new style of the web application.
 
 ### Scale the application
 
@@ -324,16 +328,17 @@ kubectl get pods --namespace $NS
 
 ### Perform rolling update of the application
 
-To test the rolling update funtionality of the kubernetes deployment add some changes to the application code. 
+To test the rolling update funtionality of the kubernetes deployments add some changes to the application code. 
 
 As an example you can add a new banner to the `index.php` file:
+
 ```
 <div class="banner">
     <h2 class="banner" style="visibility: visible;">Site wide 15% discount only today!</h2>
 </div>
 ```
 
-And add some animation to both `sytle.css` and `style-dark.css` stylesheet files:
+Add some animation to both `sytle.css` and `style-dark.css` to make the banner more attractive:
 
 ```
 h2.banner {
@@ -353,9 +358,9 @@ h2.banner {
 }
 ```
 
-Using the updated application code build and push the image to the registry and update the deployment manifest with the new image version.
+Build and push a new image version from the updated application code. Change the `website-deployment.yaml` manifest that it points to the newly create image tag.
 
-To apply and monitor the rollout execute the following commands:
+To apply and monitor the rollout process execute the following commands:
 
 ```
 kubectl apply -f website-deployment.yaml --namespace $NS
@@ -418,13 +423,13 @@ spec:
             cpu: "50m"
 ```
 
-After setting the CPU resources we can add HPA to the deployment using the following command:
+After updating the deployment with the CPU limit and request values we can add HPA using the following command:
 
 ```
 kubectl autoscale deployment ecom-web-deployment --cpu-percent=50 --min=2 --max=10 --namespace $NS
 ```
 
-To simulate some load on the application we can utilize Apache Bench. We can install and run the tool on the local machine with the following commands:
+To generate some load on the application we can utilize Apache Bench. We can install and run the tool locally with the following commands:
 
 ```
 # install Apache Bench
@@ -437,14 +442,15 @@ IP=$(kubectl get service ecom-web-service --namespace $NS --output jsonpath='{.s
 ab -r -n 100000 -c 500 http://$IP/
 ```
 
-We can monitor the behaviour of HPA with the command `kubectl get hpa --namespace $NS`.
+To monitor the Horizontal Pod Autoscaler execute `kubectl get hpa --namespace $NS` in your terminal.
 
 ### Implement Liveness, Readiness and Startup probes
 
-To implement probes we need new endpoints in our web application.
+To implement probes we need to create new endpoints in our web application.
 
-To add the endpoint for Liveness probes create a file named `healthcheck.php` with the code below. It returns HTTP status code 200 to the caller if the application is healthy.
+To create the endpoint for Liveness probes add a new file called `healthcheck.php` to your application. It will return HTTP 200 to the caller if the application is healthy.
 
+`healthcheck.php`:
 ```
 <?php
 
@@ -465,8 +471,9 @@ echo json_encode($healthCheckStatus);
 ?>
 ```
 
-The following code will be used as the Readiness and Startup probe endpoint. It tries to connect to the database of the ecom-db-deployment. In case of failure it returns HTTP 503, otherwise it returns HTTP 200. File `ready.php`:
+The following code will serve as the Readiness and Startup probe endpoint. It will try to establish a connection to the backend database. In case of failure it will return HTTP 503 otherwise it will return HTTP 200.
 
+`ready.php`:
 ```
 <?php
 
@@ -502,10 +509,9 @@ echo json_encode($readinessStatus);
 ?>
 ```
 
-After we added the endpoints we can build and push a new version of the images.
+After we've added the endpoints to our application we can build and push a new version of the image. To make kubernetes use them we need to update the deployment again:
 
-To use the endpoints in our application we need to update the deployment manifest and the deployment itself:
-
+`website-deployment.yaml`
 ```
 apiVersion: apps/v1
 kind: Deployment
@@ -579,10 +585,9 @@ kubectl create secret generic mariadb-root-password --from-literal=password='<se
 kubectl create secret generic db-password --from-literal=password='<secret>'
 ```
 
-We can create secrets using manifest files as well. In this case we have to take care of the base64 encoding of secrets using the `echo -n '<secret>' | base64` command. We can then put the encoded secrets into the manifest files:
+We can create secrets using manifest files as well. In this case we have to take care of the base64 encoding of strings using the `echo -n '<secret>' | base64` command. After encoding we can put the base64 strings into the manifest files:
 
-database-secret.yaml:
-
+`database-secret.yaml`:
 ```
 apiVersion: v1
 kind: Secret
@@ -593,8 +598,7 @@ data:
   mariadb-root-password: ZWNvbXBhc3N3b3JkCg==
 ```
 
-website-secret.yaml:
-
+`website-secret.yaml`:
 ```
 apiVersion: v1
 kind: Secret
@@ -604,7 +608,7 @@ data:
   db-password: ZWNvbXBhc3N3b3JkCg==
 ```
 
-To put all the configuration parameters into ConfigMaps first update the `database-configmap.yaml` manifest:
+To consolidate all the configuration parameters into ConfigMaps we have to update the `database-configmap.yaml` manifest:
 
 ```
 apiVersion: v1
@@ -633,6 +637,8 @@ data:
   db_name: "ecomdb"
 ```
 
+We can then apply all the newly created secret and configmap manifests:
+
 ```
 kubectl apply -f database-secret.yaml --namespace $NS
 
@@ -643,10 +649,9 @@ kubectl apply -f database-configmap.yaml --namespace $NS
 kubectl apply -f website-configmap.yaml --namespace $NS
 ```
 
-After applying all the secret and configMap manifests update the deployments:
+To make kubernetes use them we need to update the deployments:
 
-database-deployment.yaml:
-
+`database-deployment.yaml`:
 ```
 apiVersion: apps/v1
 kind: Deployment
@@ -705,8 +710,7 @@ spec:
               path: db-load-script.sql
 ```
 
-website-deployment.yaml:
-
+`website-deployment.yaml`:
 ```
 apiVersion: apps/v1
 kind: Deployment
@@ -780,7 +784,7 @@ spec:
           periodSeconds: 3
 ```
 
-Apply them to the cluster:
+And apply the updated manifests to the cluster:
 
 ```
 kubectl apply -f database-deployment.yaml --namespace $NS
@@ -790,10 +794,9 @@ kubectl apply -f website-deployment.yaml --namespace $NS
 
 ### Implement persistent storage
 
-To use persistent storage for the database service first create a persistent volume claim with the following manifest:
+To use persistent storage for the database backend first create a persistent volume claim with the following manifest:
 
-database-pvc.yaml:
-
+`database-pvc.yaml`:
 ```
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -808,7 +811,7 @@ spec:
       storage: 1Gi
 ```
 
-To mount the storage modify the `database-deployment.yaml`:
+To mount the storage into the container modify the file `database-deployment.yaml` as follows:
 
 ```
 apiVersion: apps/v1
@@ -873,7 +876,7 @@ spec:
           claimName: ecom-db-pvc
 ```
 
-After checking the results we can remove all the resources by deleting the namespace:
+In case we don't need the application resources we can clean them up in one step by deleting the namespace with the following command:
 
 ```
 kubectl delete namespace $NS
@@ -889,25 +892,25 @@ helm create ecom
 cd ecom/
 ```
 
-Customize chart configuration by modifiying the `values.yaml` file. Define variables that you would like to make configurable.
+Customize chart configuration by modifiying the `values.yaml` file. Declare variables that you would like to make configurable without changing the tenplate and package. Those variables will be passed into your templates.
 
-As the next step place the kubernetes manifest files inside the `templates` directory of the Helm chart and parameterize them using Go templates. Replace static values with variables defined in the `values.yaml` file.
+As the next step copy the kubernetes manifest files inside the `templates` directory of the Helm chart. To make the templates dynamic parameterize them using Go templates i.e. replace static values with variables defined in the `values.yaml` file.
 
-Once done with parameterization lint and package the chart:
+Once done with parameterization package the chart. We can use the version and appVersion fields in the `Chart.yaml` file to set the versions of our Helm chart before packaging:
+
+To package the chart execute:
 
 ```
-helm lint
-
 helm package .
 ```
 
-Finally install it using the following command:
+We can install the packaged chart by using the following command:
 
 ```
 helm install ecom-release ecom-0.1.0.tgz --namespace ecom --create-namespace
 ```
 
-You can remove the installed Helm release from your cluster with:
+If not needed anymore we can remove the Helm release from the cluster with:
 
 ```
 helm uninstall ecom-release --namespace ecom
@@ -917,7 +920,9 @@ kubectl delete ns ecom
 
 ### Implement CI/CD pipeline
 
-To successfully setup the pipeline for building, pushing and deploying the images we have to do some preparation work.
+If you followed along you may think that manually building and pushing images after every change is an exhausting task which could be automated. This is where GitHub Actions with its CI/CD capabilities comes into play. We will setup a GitHub Actions workflow that builds the image, pushes it to Docker Hub and deplos it to AKS after every push to the repository.
+
+To successfully setup the workflow we have to do some preparation.
 
 First of all we need a service principal in Azure that has permissions to interact with the Azure control plane. To create it execute the following commands after assigning values to the variables:
 
@@ -929,7 +934,7 @@ RGID=$(az group show --name $RGNAME --query id --output tsv)
 az ad sp create-for-rbac --name gh-action --role Contributor --scopes $RGID
 ```
 
-The output of the command and the Azure Portal can be used to populate the AZURE_CREDENTIALS repository variable. It should contain the following information in the following format:
+The output of the command and the Azure Portal can be used to populate the AZURE_CREDENTIALS repository variable. It should contain the information in the following format:
 
 ```
 {
@@ -940,7 +945,7 @@ The output of the command and the Azure Portal can be used to populate the AZURE
 }
 ```
 
- Once the service principal exists create the following GitHub secrets (repository -> settings -> security -> secrets and variables -> actions -> repository secrets):
+Once the service principal is created add the following GitHub secrets (repository -> settings -> security -> secrets and variables -> actions -> repository secrets):
 
 - **DOCKER_USERNAME** - to store the Docker Hub username
 - **DOCKER_PASSWORD** - to store the Docker Hub password
@@ -949,9 +954,26 @@ The output of the command and the Azure Portal can be used to populate the AZURE
 Then create the following GitHub variables (repository -> settings -> security -> secrets and variables -> actions -> variables -> repository variables):
 
 - **AKS_CLUSTERNAME** - to store the AKS cluster name
-- **AKS_RGNAME** - to store the resource group of the AKS cluster
+- **AKS_RGNAME** - to store the resource group name that the AKS cluster is located in
 
 If the preparation is done we can create the `deploy.yml` file under the `.github/workflows` directory to define our workflow.
 
-The wokflow has been built in a multi job structure. The first job logs in to Docker Hub, extracts metadata to be used for tagging, builds and pushes the image to Docker Hub. The second job installs kubectl, logs in to Azure, sets kubernetes context, creates kubernetes manifest from the Helm chart and deploys the manifest files.
+You can find the workflow definition in this repository and here is a quick overview of how it works.
 
+1. push_to_registry
+
+The first job is about building and pushing of the image. It uses the following actions:
+- actions/checkout: clones the repository to the runner
+- docker/login-action: logs in to Docker Hub to be able to push images from the runner
+- docker/metadata-action: generates image names and tags that can be used in later steps
+- docker/build-push-action: builds the image, tags it based on the previous action's output and pushes it to the registry
+
+2. deploy_to_kubernetes
+
+This job is about the deployment of the newly built image to AKS. The following action are being utilized:
+- actions/checkout: clones the repository to the runner
+- azure/setup-kubectl: installs kubectl on the runner
+- azure/login: logs in to Azure in the context of the service principal that we created
+- azure/aks-set-contex: sets the AKS context of the cluster defined in the repository variables
+- azure/k8s-bake: creates kubernetes manifests from the Helm chart defined in the paramaters
+- Azure/k8s-deploy: deploys the manifests created by the previous step
